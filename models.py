@@ -15,11 +15,20 @@ import tensorflow.keras as keras
 import tensorflow.keras.layers as layers
 import tensorflow.keras.backend as be
 from tensorflow.keras import regularizers
+from tensorflow.keras.models import Model
 
 from data import get_raw_dat, cut
 from layers import *
 from utils import *
 from scipy.stats import mode
+
+import importlib
+import utils
+importlib.reload(utils)
+import layers
+importlib.reload(layers)
+from utils import *
+from layers import *
 
 """
 Converts a vector of features from a real-valued input, and projects/normalizes them into a VSA symbol.
@@ -186,7 +195,7 @@ class PhasorModel(keras.Model):
     """
     Call method for dynamic (temporal) network execution using R&F neurons.
     """
-    def call_dynamic(self, inputs, dropout=0.0, jitter=0.0):
+    def call_dynamic(self, inputs, dropout=0.0, jitter=0.0, is_sleep=False):
         x = self.flatten(inputs)
         if self.projection == "NP":
             x = self.image_encoder(x, training=True)
@@ -197,9 +206,9 @@ class PhasorModel(keras.Model):
         if dropout > 0.0:
             s = dynamic_dropout(s, dropout)
 
-        s = self.dense1.call_dynamic(s, dropout=dropout, jitter=jitter)
+        s = self.dense1.call_dynamic(s, dropout=dropout, jitter=jitter, is_sleep=is_sleep)
         #don't dropout/jitter at the final layer
-        s = self.dense2.call_dynamic(s, dropout=0.0, jitter=0.0)
+        s = self.dense2.call_dynamic(s, dropout=0.0, jitter=0.0, is_sleep=is_sleep)
         #convert the spikes back to phases
         y = self.train_to_phase(s, depth=1)
 
@@ -235,11 +244,55 @@ class PhasorModel(keras.Model):
             for step, data in enumerate(loader):
                 x, y = data
 
-                loss = self.train_step(x, y)
+                loss = self.train_step(x=x, y=y)
                 losses.append(loss)
 
                 if step % report_interval == 0:
                     print("Training loss", loss)
+
+        return np.array(losses)
+
+    def train_with_sleep(self, loader, epochs, num_examples=5000, report_interval=100):
+        losses = []
+        classes_sleep = np.arange(1, 6)*2
+        
+        for i in range(epochs):
+            classes = np.arange(classes_sleep[i])
+            class_examples = np.ones(len(classes)) * num_examples
+            sleep_x_o = []
+
+            for step, data in enumerate(loader):
+                x, y = data
+
+                for j in classes:
+                    inds = tf.where(y == j)[:,0]
+                    
+                    if class_examples[j]<=0:
+                        continue
+                    
+                    if class_examples[j] < len(inds):
+                        inds = inds[:(int)(class_examples[j])]
+                    class_examples[j] = class_examples[j] - len(inds)
+
+                    x_t = np.squeeze(x, axis=3)
+                    x_t = tf.gather(x_t, inds, axis=0)
+                    x_t = np.reshape(x_t, (-1, np.prod(x_t.shape[1:])))
+
+                    if(np.shape(sleep_x_o)[0] == 0):
+                        sleep_x_o = x_t
+                    else:
+                        sleep_x_o = np.concatenate((sleep_x_o, x_t), axis=0)
+
+                loss = self.train_step(x, y)
+                losses.append(loss)
+
+
+                if step % report_interval == 0:
+                    print("Training loss", loss)
+
+            sleep_x = masked_input(sleep_x_o, (28, 28), 10000, 10)
+
+            self.call_dynamic(sleep_x, 0.0, 0.0, True)
 
         return np.array(losses)
 
@@ -310,7 +363,7 @@ class PhasorModel(keras.Model):
         gradients = tape.gradient(loss, trainable_vars)
 
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
-        return loss
+        return loss 
 
     """
     Return the series of phases produced at output for each cycle
