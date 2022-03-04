@@ -578,3 +578,21 @@ A loss function which maximises similarity between all FHRR VSA vectors.
 def vsa_loss(y, yh):
     loss = tf.math.reduce_mean(1 - similarity(y, yh))
     return loss
+
+def masked_input(x, input_shape, numexamples, mask_size=10):
+    average_input = np.mean(x, axis=0)
+    average_input = np.reshape(average_input, input_shape)
+    masked_x = np.zeros((numexamples, input_shape[0],input_shape[1]))
+
+    for i in range(numexamples):
+        xpos = np.random.randint(0,input_shape[0]-1-mask_size)
+        ypos = np.random.randint(0,input_shape[1]-1-mask_size)
+        masked_x[i,xpos:xpos+mask_size,ypos:ypos+mask_size] = average_input[xpos:xpos+mask_size,ypos:ypos+mask_size]
+
+    masked_x = np.reshape(masked_x, (numexamples, input_shape[0]*input_shape[1]))
+
+    return masked_x
+
+def sigmoid(x):
+    y = 2 * ( 1.0 - ( 1.0 / ( 1.0 + np.exp( -x / 0.001 ) ) ) )
+    return y

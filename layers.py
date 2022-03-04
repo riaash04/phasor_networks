@@ -18,6 +18,7 @@ from tensorflow.keras import regularizers
 
 from utils import *
 from scipy.integrate import solve_ivp
+from scipy.special import expit
 from tqdm import tqdm
 
 """
@@ -58,6 +59,8 @@ class CmpxLinear(keras.layers.Layer):
         self.threshold = kwargs.get("threshold", 0.03)
         self.exec_time = kwargs.get("exec_time", 10.0)
         self.max_step = kwargs.get("max_step", 0.01)
+        self.sleep_inc = kwargs.get("sleep_inc", 0.001)
+        self.sleep_dec = kwargs.get("sleep_dec", 0.0001)
 
     """
     Add the weights and calculate other parameters needed for execution after construction.
@@ -140,7 +143,7 @@ class CmpxLinear(keras.layers.Layer):
 
     Training cannot be done currently through this op as it calls numpy/scipy differential solvers & not an adjoint-based one.
     """
-    def call_dynamic(self, inputs, dropout=0.0, jitter=0.0, save_solutions=False):
+    def call_dynamic(self, inputs, dropout=0.0, jitter=0.0, is_sleep=False, save_solutions=False):
         #array to save full solutions in
         solutions = []
         #array to save the output spike trains in
@@ -173,6 +176,27 @@ class CmpxLinear(keras.layers.Layer):
             else:
                 print("WARNING: Spike mode not recognized, defaulting to gradient")
                 spk = findspks(sol, threshold=self.threshold, period=self.period)
+
+            # hebbian learning rule
+            if is_sleep:
+                weights = np.zeros_like(self.w)
+                for t in range(np.shape(spk)[1]):
+                    currents = i_fn(t)
+                    pre_spks_inds = tf.where(tf.equal(currents, 1))[:,0]
+                    not_pre_spks_inds = tf.where(tf.equal(currents, 0))[:,0]
+                    post_spks_inds = tf.where(tf.equal(spk[:,t], True))[:,0]
+
+                    for i in pre_spks_inds:
+                        for j in post_spks_inds:
+                            weights[i, j] = self.sleep_inc * expit(self.w[i, j])
+                    for i in not_pre_spks_inds:
+                        for j in post_spks_inds:
+                            weights[i, j] = self.sleep_inc * expit(self.w[i, j])
+                
+                weights = tf.add(weights, self.w.numpy())
+                weights = tf.expand_dims(weights, axis=0)
+                self.set_weights(weights)
+
             
             #convert the dense boolean matrix of detect spikes to a sparse spike train
             spk_inds, spk_tms = np.nonzero(spk)
