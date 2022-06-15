@@ -140,15 +140,8 @@ class PhasorModel(keras.Model):
         if similarity:
             samples = np.zeros_like(guesses, dtype=np.float)
 
-        #labels = np.arange(4)
-
         for data in loader:
             x, y = data
-
-            #inds = tf.where([i in labels for i in y])[:,0]
-            #y = tf.gather(y, inds, axis=0)
-            #x = tf.gather(x, inds, axis=0)
-
             ns = x.shape[0]
 
             if method == "dynamic_mean" or method == "dynamic":
@@ -246,36 +239,27 @@ class PhasorModel(keras.Model):
     """
     def train(self, loader, epochs, report_interval=100):
         losses = []
-        labels = np.arange(10)
 
-        for i in range(epochs):
-            for j in range(2):
-                to_train = (labels[2*j], labels[2*j+1])
-                for step, data in enumerate(loader):
-                    x, y = data
+        for _ in range(epochs):
+            for step, data in enumerate(loader):
+                x, y = data
 
-                    inds = tf.where([k in to_train for k in y])[:,0]
-                    x_train = tf.gather(x, inds, axis=0)
-                    y_train = tf.gather(y, inds, axis=0)
+                loss = self.train_step(x=x, y=y)
+                losses.append(loss)
 
-                    loss = self.train_step(x=x_train, y=y_train)
-                    losses.append(loss)
-
-                    if step % report_interval == 0:
-                        print("Training loss", loss)
+                if step % report_interval == 0:
+                    print("Training loss", loss)
 
         return np.array(losses)
 
-    def train_with_sleep(self, loader, epochs, num_masked_input=100, num_examples=5000, report_interval=100):
+    def train_with_sleep(self, loader, epochs, num_examples=5000, report_interval=100):
         losses = []
         classes_sleep = np.arange(1, 6)*2
-        labels = np.arange(10)
-
+        
         for i in range(epochs):
             classes = np.arange(classes_sleep[i])
             class_examples = np.ones(len(classes)) * num_examples
             sleep_x_o = []
-            to_train = (labels[2*i], labels[2*i+1])
 
             for step, data in enumerate(loader):
                 x, y = data
@@ -299,22 +283,16 @@ class PhasorModel(keras.Model):
                     else:
                         sleep_x_o = np.concatenate((sleep_x_o, x_t), axis=0)
 
-                inds = tf.where([k in to_train for k in y])[:, 0]
-                x_train = tf.gather(x, inds, axis=0)
-                #print("x:", tf.shape(x))
-                #print("x_trian:", tf.shape(x_train))
-                y_train = tf.gather(y, inds, axis=0)
-                #print("y:", tf.shape(y))
-
-
-                loss = self.train_step(x_train, y_train)
+                loss = self.train_step(x, y)
                 losses.append(loss)
 
 
                 if step % report_interval == 0:
                     print("Training loss", loss)
 
-            sleep_x = masked_input(sleep_x_o, (28, 28), num_masked_input, 10)
+            sleep_x = masked_input(sleep_x_o, (28, 28), 10
+, 10)
+
             self.call_dynamic(sleep_x, 0.0, 0.0, True)
 
         return np.array(losses)

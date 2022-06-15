@@ -179,25 +179,25 @@ class CmpxLinear(keras.layers.Layer):
 
             # hebbian learning rule
             if is_sleep:
-                cur_w = self.get_weights()[0]
-                weights = np.zeros_like(cur_w)
-                #rng = np.random.default_rng()
-                #times = rng.choice(np.shape(spk)[1], 32)
-                times = range(np.shape(spk)[1])
+                weights = np.zeros_like(self.w)
+                rng = np.random.default_rng()
+                times = rng.choice(np.shape(spk)[1], 32)
                 for t in times:
                     currents = i_fn(t)
                     pre_spks_inds = tf.where(tf.equal(currents, 1))[:,0]
                     not_pre_spks_inds = tf.where(tf.equal(currents, 0))[:,0]
                     post_spks_inds = tf.where(tf.equal(spk[:,t], True))[:,0]
 
-                    weights[np.ix_(pre_spks_inds, post_spks_inds)] = self.sleep_inc * expit(cur_w[np.ix_(pre_spks_inds, post_spks_inds)])
-                    weights[np.ix_(not_pre_spks_inds, post_spks_inds)] = (-1)*self.sleep_dec * expit(cur_w[np.ix_(not_pre_spks_inds, post_spks_inds)])
-
-                #self.w.assign_add(weights)
-                weights = tf.add(weights, cur_w)
-                self.set_weights([weights])
-                tf.complex(self.w, tf.zeros_like(self.w))
-
+                    for i in pre_spks_inds:
+                        for j in post_spks_inds:
+                            weights[i, j] = self.sleep_inc * expit(self.w.numpy()[i, j])
+                    for i in not_pre_spks_inds:
+                        for j in post_spks_inds:
+                            weights[i, j] = self.sleep_inc * expit(self.w.numpy()[i, j]
+                
+                weights = tf.add(weights, self.w.numpy())
+                weights = tf.expand_dims(weights, axis=0)
+                self.set_weights(weights)
 
             
             #convert the dense boolean matrix of detect spikes to a sparse spike train
@@ -249,7 +249,7 @@ class CmpxLinear(keras.layers.Layer):
         return [self.w.numpy()]
 
     def set_weights(self, weights):
-        self.w.assign(weights[0])
+        self.w.value = weights[0]
 
 """
 Convolutional layer which operates using phasor activations.
