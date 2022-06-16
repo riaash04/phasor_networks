@@ -7,28 +7,29 @@ Wilkie Olin-Ammentorp, 2021
 University of Califonia, San Diego
 """
 
-import numpy as np
+import importlib
 
+import numpy as np
 import tensorflow as tf
-import tensorflow_datasets as tfds
 import tensorflow.keras as keras
-import tensorflow.keras.layers as layers
 import tensorflow.keras.backend as be
+import tensorflow.keras.layers as layers
+import tensorflow_datasets as tfds
+from scipy.stats import mode
 from tensorflow.keras import regularizers
 from tensorflow.keras.models import Model
 
-from data import get_raw_dat, cut
+import utils
+from data import cut, get_raw_dat
 from layers import *
 from utils import *
-from scipy.stats import mode
 
-import importlib
-import utils
 importlib.reload(utils)
 import layers
+
 importlib.reload(layers)
-from utils import *
 from layers import *
+from utils import *
 
 """
 Converts a vector of features from a real-valued input, and projects/normalizes them into a VSA symbol.
@@ -244,43 +245,42 @@ class PhasorModel(keras.Model):
     """
     Given a training set, train the network using standard gradient descent over a number of epochs with static execution.
     """
-    def train(self, loader, epochs, report_interval=100):
+    def train(self, loader, epochs, labels_to_train, report_interval=100):
         losses = []
-        labels = np.arange(10)
+        # labels = np.arange(10)
 
         for i in range(epochs):
-            for j in range(2):
-                to_train = (labels[2*j], labels[2*j+1])
-                for step, data in enumerate(loader):
-                    x, y = data
+            # for j in range(2):
+            #     to_train = (labels[2*j], labels[2*j+1])
+            for step, data in enumerate(loader):
+                x, y = data
 
-                    inds = tf.where([k in to_train for k in y])[:,0]
-                    x_train = tf.gather(x, inds, axis=0)
-                    y_train = tf.gather(y, inds, axis=0)
+                inds = tf.where([k in labels_to_train for k in y])[:,0]
+                x_train = tf.gather(x, inds, axis=0)
+                y_train = tf.gather(y, inds, axis=0)
 
-                    loss = self.train_step(x=x_train, y=y_train)
-                    losses.append(loss)
+                loss = self.train_step(x_train, y_train)
+                losses.append(loss)
 
-                    if step % report_interval == 0:
-                        print("Training loss", loss)
+                if step % report_interval == 0:
+                    print("Training loss", loss)
 
         return np.array(losses)
 
-    def train_with_sleep(self, loader, epochs, num_masked_input=100, num_examples=5000, report_interval=100):
+    def train_with_sleep(self, loader, epochs, labels_to_train, sleep_input_labels, num_masked_input=100, num_examples=5000, report_interval=100):
         losses = []
-        classes_sleep = np.arange(1, 6)*2
-        labels = np.arange(10)
+        # classes_sleep = np.arange(1, 6)*2
+        # labels = np.arange(10)
 
         for i in range(epochs):
-            classes = np.arange(classes_sleep[i])
-            class_examples = np.ones(len(classes)) * num_examples
+            # classes = np.arange(classes_sleep[i])
+            class_examples = np.ones(len(sleep_input_labels)) * num_examples
             sleep_x_o = []
-            to_train = (labels[2*i], labels[2*i+1])
 
             for step, data in enumerate(loader):
                 x, y = data
 
-                for j in classes:
+                for j in sleep_input_labels:
                     inds = tf.where(y == j)[:,0]
                     
                     if class_examples[j]<=0:
@@ -299,7 +299,7 @@ class PhasorModel(keras.Model):
                     else:
                         sleep_x_o = np.concatenate((sleep_x_o, x_t), axis=0)
 
-                inds = tf.where([k in to_train for k in y])[:, 0]
+                inds = tf.where([k in labels_to_train for k in y])[:, 0]
                 x_train = tf.gather(x, inds, axis=0)
                 #print("x:", tf.shape(x))
                 #print("x_trian:", tf.shape(x_train))

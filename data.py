@@ -7,11 +7,10 @@ University of Califonia, San Diego
 
 import matplotlib.pyplot as plt
 import numpy as np
-
 import tensorflow as tf
-import tensorflow_datasets as tfds
 import tensorflow.keras as keras
 import tensorflow.keras.layers as layers
+import tensorflow_datasets as tfds
 
 from utils import similarity
 
@@ -89,4 +88,12 @@ Given a confusion matrix, calculate the corresponding accuracy score.
 def confusion_to_accuracy(confusion):
     total = tf.math.reduce_sum(confusion)
     correct = tf.math.reduce_sum(tf.linalg.diag_part(confusion))
+    return correct / total
+
+"""
+Given a confusion matrix, calculate the corresponding accuracy score.
+"""
+def confusion_to_accuracy2(confusion, labels):
+    total = tf.math.reduce_sum(confusion[0][0:labels, 0:labels])
+    correct = tf.math.reduce_sum(tf.linalg.diag_part(confusion[0][0:labels, 0:labels]))
     return correct / total
